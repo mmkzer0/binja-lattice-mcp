@@ -31,6 +31,7 @@ class LatticeConfig:
         self.config = configparser.ConfigParser()
         plugin_dir = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(plugin_dir, config_filename)
+        self.config_path = config_path
 
         if os.path.exists(config_path):
             try:
@@ -68,15 +69,36 @@ class LatticeConfig:
             pass
 
     def get_api_key(self):
-        """Uses the config.ini API Key if valid, otherwise, on initialization creates a new one."""
+        """Precedence: config.ini api_key -> BNJLAT env -> generate once + persist."""
+        api_key_conf = None
+        if self.config.has_section("lattice"):
+            try:
+                api_key_conf = self.config.get("lattice", "api_key", fallback="")
+            except configparser.Error:
+                api_key_conf = ""
+            api_key_conf = api_key_conf.strip().strip("\"'")
+
+        if api_key_conf:
+            self.api_key = api_key_conf
+            return
+
+        env_key = os.environ.get("BNJLAT", "").strip()
+        if env_key:
+            self.api_key = env_key
+            return
+
+        self.api_key = self.new_api_key
+        self._persist_api_key(self.api_key)
+
+    def _persist_api_key(self, api_key: str) -> None:
+        if not self.config.has_section("lattice"):
+            self.config.add_section("lattice")
+        self.config.set("lattice", "api_key", api_key)
         try:
-            api_key_conf = self.config.get("lattice", "api_key")
-            if api_key_conf:
-                self.api_key = api_key_conf.strip("\"'")
-            else:
-                api_key_conf = self.new_api_key
-        except (configparser.NoOptionError, configparser.NoSectionError):
-            self.api_key = self.new_api_key
+            with open(self.config_path, "w", encoding="utf-8") as handle:
+                self.config.write(handle)
+        except OSError as exc:
+            logger.log_error(f"Failed to persist api_key to config.ini: {exc}")
 
     def get_use_ssl(self, default=False):
         """Checks if SSL should be used. For configparser everything is a string, so we need to check if the inputs are bools"""

@@ -37,3 +37,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Operator-local plugin auth (written by mcp-tools provision)
+plugin/config.ini
